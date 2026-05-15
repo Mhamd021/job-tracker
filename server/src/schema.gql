@@ -1,0 +1,79 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type Application {
+  appliedAt: DateTime!
+  companyName: String!
+  companyUrl: String
+  id: ID!
+  jobRole: String!
+  notes: String
+  status: Status!
+  updatedAt: DateTime!
+  userId: String!
+}
+
+type ApplicationStats {
+  byStatus: [StatusCount!]!
+  total: Int!
+}
+
+input AuthInput {
+  email: String!
+  password: String!
+}
+
+type AuthResponse {
+  access_token: String!
+}
+
+input CreateApplicationInput {
+  companyName: String!
+  companyUrl: String
+  jobRole: String!
+  notes: String
+  status: Status
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type Mutation {
+  createApplication(input: CreateApplicationInput!): Application!
+  deleteApplication(id: ID!): Application!
+  login(input: AuthInput!): AuthResponse!
+  register(input: AuthInput!): AuthResponse!
+  updateApplication(input: UpdateApplicationInput!): Application!
+}
+
+type Query {
+  application(id: ID!): Application
+  applications(status: Status): [Application!]!
+  health: String!
+  stats: ApplicationStats!
+}
+
+enum Status {
+  APPLIED
+  INTERVIEW
+  OFFER
+  REJECTED
+  TO_APPLY
+}
+
+type StatusCount {
+  count: Int!
+  status: Status!
+}
+
+input UpdateApplicationInput {
+  companyName: String
+  companyUrl: String
+  id: ID!
+  jobRole: String
+  notes: String
+  status: Status
+}
