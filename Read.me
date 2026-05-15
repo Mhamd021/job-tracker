@@ -1,0 +1,65 @@
+# Job Application Tracker — API
+
+Backend API for tracking job applications during a Germany job search.
+Built with NestJS, GraphQL, PostgreSQL, and Prisma.
+
+## Stack
+- **NestJS** — TypeScript backend framework
+- **GraphQL** — API layer (code-first with @nestjs/graphql)
+- **PostgreSQL** — primary database
+- **Prisma v7** — ORM with pg adapter
+- **JWT** — stateless authentication
+- **Docker Compose** — full stack deployment
+
+## Architecture
+\`\`\`
+Next.js Client
+     ↓ GraphQL queries
+NestJS API (port 3001)
+     ↓ Prisma
+PostgreSQL (Docker)
+\`\`\`
+
+## GraphQL API
+
+### Auth
+\`\`\`graphql
+mutation { register(input: { email: "", password: "" }) { access_token } }
+mutation { login(input: { email: "", password: "" }) { access_token } }
+\`\`\`
+
+### Applications
+\`\`\`graphql
+query { applications(status: APPLIED) { id companyName jobRole status } }
+query { application(id: "uuid") { companyName notes } }
+query { stats { total byStatus { status count } } }
+
+mutation { createApplication(input: { companyName: "", jobRole: "", status: APPLIED }) { id } }
+mutation { updateApplication(input: { id: "", status: INTERVIEW }) { id status } }
+mutation { deleteApplication(id: "") { id } }
+\`\`\`
+
+## Local Development
+
+\`\`\`bash
+# Start database
+docker compose up -d postgres
+
+# Install & run
+cd server && npm install
+npm run start:dev
+
+# Frontend
+cd client && npm install
+npm run dev
+\`\`\`
+
+## Full Stack with Docker
+\`\`\`bash
+docker compose up -d
+\`\`\`
+
+## Why GraphQL here?
+REST would need separate endpoints for each filter combination.
+GraphQL lets the client request exactly what it needs in one query —
+especially useful for the stats dashboard and filtered application lists.

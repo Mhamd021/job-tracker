@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: job_tracker_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: job_tracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  server:
+    build: ./server
+    container_name: job_tracker_server
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/job_tracker
+      JWT_SECRET: your-super-secret-key-change-this
+    depends_on:
+      - postgres
+
+  client:
+    build: ./client
+    container_name: job_tracker_client
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001/graphql
+    depends_on:
+      - server
+
+volumes:
+  pgdata:
