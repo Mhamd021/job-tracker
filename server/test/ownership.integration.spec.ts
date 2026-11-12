@@ -6,7 +6,8 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { assertTestDatabase } from './assert-test-database';
 import { resetTestDatabase } from './reset-test-database';
 import { CreateApplicationInput } from '../src/applications/dto/create-application.input';
-import { Status } from '../src/applications/models/application.model';
+import {  Status } from '../src/applications/models/application.model';
+import { UpdateApplicationInput } from '../src/applications/dto/update-application.input';
 
 
 describe('ownership', () => {
@@ -51,6 +52,16 @@ const createApplication = async (input: CreateApplicationInput, token:string): P
   }
   return id;
 };
+const UPDATE_APPLICATION = `mutation ($input: UpdateApplicationInput!) {
+  updateApplication(input: $input) { id companyName }
+}`;
+
+const updateApplication = async (input: UpdateApplicationInput, token:string) => 
+  {
+    const response = await gql(UPDATE_APPLICATION, { input }, token);
+    return response;
+  }
+
 
 const READAPPLICATION = `query ($id:ID!)
 {
@@ -183,6 +194,23 @@ it('stats counts only the users own applications', async () => {
   expect(statsB.body.data.stats.total).toBe(1);
   expect(counts(statsB)).toEqual({ REJECTED: 1});
 
+});
+it('user A cannot update user B application', async () => {
+  const userAtoken = await register(`${Date.now()}-a@example.com`);
+  const userBtoken = await register(`${Date.now()}-b@example.com`);
+
+   const applicationIdA1 = await createApplication(
+    { companyName: 'userA Company', jobRole: 'userA Role', },
+    userAtoken,
+  );
+  const update = await updateApplication({id:applicationIdA1,companyName:"changed by owner"},userAtoken);
+  expect(update.body.errors).toBeUndefined();
+  expect(update.body.data.updateApplication.companyName).toBe("changed by owner");
+
+
+  const bupdate = await updateApplication({id:applicationIdA1,companyName:"changed by B"},userBtoken);
+  expect(bupdate.body.errors).not.toBeUndefined();
+  expect(bupdate.body.data).toBeNull();
 });
 
   });
