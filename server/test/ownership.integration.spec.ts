@@ -6,6 +6,8 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { assertTestDatabase } from './assert-test-database';
 import { resetTestDatabase } from './reset-test-database';
 import { CreateApplicationInput } from '../src/applications/dto/create-application.input';
+import { Status } from '../src/applications/models/application.model';
+
 
 describe('ownership', () => {
   let app: INestApplication;
@@ -40,7 +42,6 @@ const APPLICATION = `mutation ($input: CreateApplicationInput!) {
 const createApplication = async (input: CreateApplicationInput, token:string): Promise<string> => {
   const response = await gql(APPLICATION, {
     input
-    
   },token);
   const id = response.body?.data?.createApplication?.id;
   if (!id) {
@@ -71,6 +72,9 @@ const readApplications = async(token:string) =>
     const response = await gql(READAPPLICATIONS,{},token );
     return response;
   }
+
+  const READ_STATS = `query { stats { total byStatus { status count } } }`;
+  const readStats = (token: string) => gql(READ_STATS, {}, token);
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -89,26 +93,23 @@ const readApplications = async(token:string) =>
     await app.close();
   });
 
-// it('user A cannot read user B application by id', async () => {
-//   const userAtoken = await register(`${Date.now()}-a@example.com`);
-//   const userBtoken = await register(`${Date.now()}-b@example.com`);
+it('user A cannot read user B application by id', async () => {
+  const userAtoken = await register(`${Date.now()}-a@example.com`);
+  const userBtoken = await register(`${Date.now()}-b@example.com`);
 
-//   const applicationId = await createApplication(
-//     { companyName: 'userA Company', jobRole: 'userA Role' },
-//     userAtoken,
-//   );
+  const applicationId = await createApplication(
+    { companyName: 'userA Company', jobRole: 'userA Role' },
+    userAtoken,
+  );
 
-//   // Control: the owner can read it. Without this, the test would also pass
-//   // if the application had never been created.
-//   const asOwner = await readApplication(applicationId, userAtoken);
-//   expect(asOwner.body.errors).toBeUndefined();
-//   expect(asOwner.body.data.application.id).toBe(applicationId);
+  const asOwner = await readApplication(applicationId, userAtoken);
+  expect(asOwner.body.errors).toBeUndefined();
+  expect(asOwner.body.data.application.id).toBe(applicationId);
 
-//   // Ownership: B asks for A's id and must get "not found", not a crash.
-//   const asOther = await readApplication(applicationId, userBtoken);
-//   expect(asOther.body.errors).toBeUndefined();
-//   expect(asOther.body.data.application).toBeNull();
-// });
+  const asOther = await readApplication(applicationId, userBtoken);
+  expect(asOther.body.errors).toBeUndefined();
+  expect(asOther.body.data.application).toBeNull();
+});
 
     it('user read applications wihtout leak', async () => {
   const userAtoken = await register(`${Date.now()}-a@example.com`);
@@ -142,14 +143,46 @@ expect(ids(asOwnerA)).toEqual([applicationIdA1, applicationIdA2].sort());
   expect(asOwnerB.body.errors).toBeUndefined();
   expect(asOwnerB.body.data.applications).toHaveLength(1);
   expect(ids(asOwnerB)).toEqual([applicationIdB1].sort());
+});
 
+it('stats counts only the users own applications', async () => {
+ const usertoken = await register(`${Date.now()}-a@example.com`);
+  const userBtoken = await register(`${Date.now()}-b@example.com`);
 
+ await createApplication(
+    { companyName: 'userB Company', jobRole: 'userB Role',status:Status.REJECTED },
+    userBtoken,
+  );
+   await createApplication(
+    { companyName: 'userA Company', jobRole: 'userA Role' },
+    usertoken,
+  );
+    await createApplication(
+    { companyName: 'userA Company2', jobRole: 'userA Role2' },
+    usertoken,
+  );
+   await createApplication(
+    { companyName: 'userA Company3', jobRole: 'userA Role3',status:Status.INTERVIEW },
+    usertoken,
+  );
 
+  const counts = (res: { body: any }): Record<string, number> =>
+  Object.fromEntries(
+    res.body.data.stats.byStatus.map(
+      (s: { status: string; count: number }) => [s.status, s.count],
+    ),
+  );
+ 
+  const statsA = await readStats(usertoken);
+  expect(statsA.body.errors).toBeUndefined();
+  expect(statsA.body.data.stats.total).toBe(3);
+  expect(counts(statsA)).toEqual({ APPLIED: 2, INTERVIEW: 1 });
+
+  const statsB = await readStats(userBtoken);
+  expect(statsB.body.errors).toBeUndefined();
+  expect(statsB.body.data.stats.total).toBe(1);
+  expect(counts(statsB)).toEqual({ REJECTED: 1});
 
 });
-    
-    
-    
-    
 
   });
