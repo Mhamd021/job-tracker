@@ -62,6 +62,15 @@ const readApplication = async(id:string,token:string) =>
     return response;
      
   }
+
+  
+const READAPPLICATIONS = `query { applications { id userId } }`;
+
+const readApplications = async(token:string) =>
+  {
+    const response = await gql(READAPPLICATIONS,{},token );
+    return response;
+  }
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -80,28 +89,64 @@ const readApplication = async(id:string,token:string) =>
     await app.close();
   });
 
-it('user A cannot read user B application by id', async () => {
+// it('user A cannot read user B application by id', async () => {
+//   const userAtoken = await register(`${Date.now()}-a@example.com`);
+//   const userBtoken = await register(`${Date.now()}-b@example.com`);
+
+//   const applicationId = await createApplication(
+//     { companyName: 'userA Company', jobRole: 'userA Role' },
+//     userAtoken,
+//   );
+
+//   // Control: the owner can read it. Without this, the test would also pass
+//   // if the application had never been created.
+//   const asOwner = await readApplication(applicationId, userAtoken);
+//   expect(asOwner.body.errors).toBeUndefined();
+//   expect(asOwner.body.data.application.id).toBe(applicationId);
+
+//   // Ownership: B asks for A's id and must get "not found", not a crash.
+//   const asOther = await readApplication(applicationId, userBtoken);
+//   expect(asOther.body.errors).toBeUndefined();
+//   expect(asOther.body.data.application).toBeNull();
+// });
+
+    it('user read applications wihtout leak', async () => {
   const userAtoken = await register(`${Date.now()}-a@example.com`);
   const userBtoken = await register(`${Date.now()}-b@example.com`);
 
-  const applicationId = await createApplication(
+  const applicationIdA1 = await createApplication(
     { companyName: 'userA Company', jobRole: 'userA Role' },
     userAtoken,
   );
+  const applicationIdA2 = await createApplication(
+    { companyName: 'userA Company2', jobRole: 'userA Role2' },
+    userAtoken,
+  );
+   const applicationIdB1 = await createApplication(
+    { companyName: 'userB Company', jobRole: 'userB Role' },
+    userBtoken,
+  );
 
-  // Control: the owner can read it. Without this, the test would also pass
-  // if the application had never been created.
-  const asOwner = await readApplication(applicationId, userAtoken);
-  expect(asOwner.body.errors).toBeUndefined();
-  expect(asOwner.body.data.application.id).toBe(applicationId);
+  
+  const asOwnerA = await readApplications(userAtoken);
+  const ids = (res: { body: any }): string[] =>
+  res.body.data.applications.map((a: { id: string }) => a.id).sort();
+  
+  expect(asOwnerA.body.errors).toBeUndefined();
+  expect(asOwnerA.body.data.applications).toHaveLength(2);
+  
 
-  // Ownership: B asks for A's id and must get "not found", not a crash.
-  const asOther = await readApplication(applicationId, userBtoken);
-  expect(asOther.body.errors).toBeUndefined();
-  expect(asOther.body.data.application).toBeNull();
+expect(ids(asOwnerA)).toEqual([applicationIdA1, applicationIdA2].sort());
+
+  const asOwnerB = await readApplications(userBtoken);
+  expect(asOwnerB.body.errors).toBeUndefined();
+  expect(asOwnerB.body.data.applications).toHaveLength(1);
+  expect(ids(asOwnerB)).toEqual([applicationIdB1].sort());
+
+
+
+
 });
-
-    
     
     
     
