@@ -61,7 +61,14 @@ const updateApplication = async (input: UpdateApplicationInput, token:string) =>
     const response = await gql(UPDATE_APPLICATION, { input }, token);
     return response;
   }
-
+  const DELETE_APPLICATION = `mutation ($id: ID!) {
+  deleteApplication(id: $id) { id }
+}`;
+const deleteApplication = async(id:string,token:string) =>
+{
+const response = await gql(DELETE_APPLICATION,{id:id},token );
+return response;
+}
 
 const READAPPLICATION = `query ($id:ID!)
 {
@@ -209,8 +216,34 @@ it('user A cannot update user B application', async () => {
 
 
   const bupdate = await updateApplication({id:applicationIdA1,companyName:"changed by B"},userBtoken);
+  const companyName = await prisma.application.findUnique({where:{id:applicationIdA1}});
+  expect(companyName?.companyName).toEqual('changed by owner');
   expect(bupdate.body.errors).not.toBeUndefined();
   expect(bupdate.body.data).toBeNull();
 });
 
+it('user B cannot delete user A application' , async() =>
+{
+  const userAtoken = await register(`${Date.now()}-a@example.com`);
+  const userBtoken = await register(`${Date.now()}-b@example.com`);
+
+   const applicationIdA1 = await createApplication(
+    { companyName: 'userA Company', jobRole: 'userA Role', },
+    userAtoken,
+  );
+  const deleteB = await deleteApplication(applicationIdA1,userBtoken);
+  expect(deleteB.body.errors).not.toBeUndefined();
+  const stillThere = await prisma.application.findUnique({
+  where: { id: applicationIdA1 },
+});
+  expect(stillThere).not.toBeNull();
+  
+  const deleteA= await deleteApplication(applicationIdA1,userAtoken);
+  expect(deleteA.body.errors).toBeUndefined();
+  expect(deleteA.body.data.deleteApplication.id).toEqual(applicationIdA1);
+  const gone = await prisma.application.findUnique({
+  where: { id: applicationIdA1 },
+  });
+  expect(gone).toBeNull();
+});
   });
