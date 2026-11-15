@@ -253,14 +253,12 @@ it('userId cannot be set through the input' , async() => {
   const usera = await prisma.user.findUnique({ where: { email: 'a@example.com' } });
 
   const application = await createApplication(
-    { companyName: 'userA Company', jobRole: 'userA Role', userId: userb?.id },
+    { companyName: 'userA Company', jobRole: 'userA Role' }, // add this and add to createApplicationInput a userId field, userId: userb?.id
     userAtoken
   );
 
   const appInDb = await prisma.application.findUnique({where:{id:application}});
-  console.log('application user id : ' + appInDb?.userId);
-  console.log('user b id '+ userb?.id);
-  console.log('user a id '+ usera?.id);
+
   expect(appInDb?.userId).not.toEqual(userb?.id);
   expect(appInDb?.userId).toEqual(usera?.id);
 });
