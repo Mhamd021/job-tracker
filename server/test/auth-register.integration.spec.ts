@@ -41,4 +41,23 @@ describe('registration', () => {
     expect(verifier.verify(token).sub).toEqual(user.id);
     expect(verifier.verify(token).email).toEqual(user.email);
   });
+
+  it('a second registration with the same email is refused and changes nothing', async () => {
+  const email = 'dup@example.com';
+  const first = await gql(REGISTER, { input: { email, password: 'first-password' } });
+  expect(first.body.errors).toBeUndefined();
+  const before = await prisma.user.findUniqueOrThrow({ where: { email } });
+
+  const second = await gql(REGISTER, { input: { email, password: 'second-password' } });
+  expect(second.body.errors).toBeDefined();
+  expect(second.body.data).toBeNull();
+  
+  expect(second.body.errors[0].message).toBe('Email already in use');
+  expect(second.body.errors[0]?.extensions?.code).toBe('INTERNAL_SERVER_ERROR');
+  
+  expect(await prisma.user.count({where:{email}})).toEqual(1);
+    
+  const user = await prisma.user.findFirstOrThrow({where:{email}});
+  expect(before.password).toEqual(user.password);
+});
 });
