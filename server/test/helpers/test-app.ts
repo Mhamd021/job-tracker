@@ -25,3 +25,15 @@ export const makeGql = (app: INestApplication) =>
     if (token) req.set('Authorization', `Bearer ${token}`);
     return req.send({ query, variables });
   };
+
+ export async function registerUser(
+  gql: ReturnType<typeof makeGql>, email: string, password = 'password-for-tests',
+): Promise<string> {
+  const res = await gql(
+    `mutation ($input: AuthInput!) { register(input: $input) { access_token } }`,
+    { input: { email, password } },
+  );
+  const token = res.body?.data?.register?.access_token;
+  if (!token) throw new Error(`register failed: ${JSON.stringify(res.body.errors ?? res.body)}`);
+  return token;
+}
