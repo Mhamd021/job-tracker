@@ -28,6 +28,7 @@ export class JwtGuard {
     try {
       request.user = this.jwt.verify(token, {
         secret: this.config.get('JWT_SECRET'),
+         algorithms: ['HS256'],
       });
       return true;
     } catch {

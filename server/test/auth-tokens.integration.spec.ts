@@ -206,4 +206,14 @@ describe('auth tokens', () => {
         await expectAccepted('bearer ' + token);
     });
 
+    it('rejects a token signed with another HMAC algorithm', async () => {
+  const user = await prisma.user.create({
+    data: { email: 'hs512@example.com', password: 'not-used' },
+  });
+  const token = realSigner.sign({ sub: user.id, email: user.email }, { algorithm: 'HS512' });
+  const header = JSON.parse(Buffer.from(token.split('.')[0], 'base64url').toString('utf8'));
+  expect(header.alg).toBe('HS512');
+  await expectRejected('Bearer ' + token);
+});
+
 });
