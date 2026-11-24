@@ -10,11 +10,19 @@ export class JwtGuard {
     private config: ConfigService,
   ) {}
 
+  private extractToken(header: unknown): string | null {
+  if (typeof header !== 'string') return null;
+  const [scheme, token, ...rest] = header.split(' ');
+  if (rest.length > 0 || !token) return null;
+  if (scheme.toLowerCase() !== 'bearer') return null;
+  return token;
+}
   canActivate(context: ExecutionContext): boolean {
     const ctx = GqlExecutionContext.create(context);
     const request = ctx.getContext().req;
     
-    const token = request.headers.authorization?.split(' ')[1];
+    const token = this.extractToken(request.headers.authorization);
+    
     if (!token) throw new UnauthorizedException();
 
     try {

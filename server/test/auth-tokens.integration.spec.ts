@@ -41,9 +41,19 @@ describe('auth tokens', () => {
             { input: { companyName: 'X', jobRole: 'Y' } },
             header,
         );
-        
-        expect(await prisma.application.count()).toBe(0);
+
+
         expect(res.body.errors?.[0]?.extensions?.code).toBe('UNAUTHENTICATED');
+        expect(await prisma.application.count()).toBe(0);
+    };
+    const expectAccepted = async (header: string) => {
+        const res = await gqlWithHeader(
+            APPLICATION,
+            { input: { companyName: 'X', jobRole: 'Y' } },
+            header,
+        );
+        expect(res.body.errors).toBeUndefined();
+        expect(await prisma.application.count()).toBe(1);
     };
 
     const REGISTER = `
@@ -154,8 +164,8 @@ describe('auth tokens', () => {
         expect(await prisma.application.findMany({ where: { userId: victim.id } })).toEqual([]);
     });
 
-     it('Unsigned token', async () => {
-         const victim = await prisma.user.create({
+    it('Unsigned token', async () => {
+        const victim = await prisma.user.create({
             data: { email: 'unsigned@example.com', password: 'not-used' },
         });
         const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -164,18 +174,36 @@ describe('auth tokens', () => {
         expect(await prisma.application.findMany({ where: { userId: victim.id } })).toEqual([]);
     });
 
-     it('Empty token', async () => {
-     
+    it('Empty token', async () => {
+
         await expectRejected('Bearer ');
 
     });
 
-    it.failing('rejects a non-Bearer scheme (known bug: the guard accepts it)', async () => {
-  const user = await prisma.user.create({
-    data: { email: 'scheme@example.com', password: 'not-used' },
-  });
-  const token = realSigner.sign({ sub: user.id, email: user.email });
-  await expectRejected('Basic ' + token);
-});
+    it('rejects a non-Bearer scheme', async () => {
+        const user = await prisma.user.create({
+            data: { email: 'scheme@example.com', password: 'not-used' },
+        });
+        const token = realSigner.sign({ sub: user.id, email: user.email });
+        await expectRejected('Basic ' + token);
+
+    });
+
+    it('rejects extra parts after the token', async () => {
+        const user = await prisma.user.create({
+            data: { email: 'extra@example.com', password: 'not-used' },
+        });
+        const token = realSigner.sign({ sub: user.id, email: user.email });
+        await expectRejected('Bearer ' + token + ' extra');
+
+    });
+    it('accepts the scheme in lowercase', async () => {
+        const user = await prisma.user.create({
+            data: { email: 'lowercase@example.com', password: 'not-used' },
+        });
+        const token = realSigner.sign({ sub: user.id, email: user.email });
+
+        await expectAccepted('bearer ' + token);
+    });
 
 });
