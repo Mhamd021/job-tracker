@@ -216,4 +216,16 @@ describe('auth tokens', () => {
   await expectRejected('Bearer ' + token);
 });
 
+it('a token without a sub cannot read other users data', async () => {
+  const victim = await prisma.user.create({ data: { email: 'victim2@example.com', password: 'x' } });
+  await prisma.application.create({
+    data: { userId: victim.id, companyName: 'Secret', jobRole: 'Role' },
+  });
+  const noSub = realSigner.sign({ email: 'nosub@example.com' });     
+
+  const res = await gqlWithHeader(`query { applications { id companyName } }`, {}, 'Bearer ' + noSub);
+  expect(res.body.data).toBeNull();
+ expect(res.body.errors?.[0]?.extensions?.code).toBe('UNAUTHENTICATED');
+  expect(JSON.stringify(res.body)).not.toContain('Secret');
+});
 });
