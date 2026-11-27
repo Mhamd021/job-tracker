@@ -101,19 +101,14 @@ describe('registration', () => {
       expect(losers[0].body?.errors?.[0]?.message).toBe('Email already in use');
     }
   });
-  it('today: the same email in another letter case creates a second account', async () => {
-    const first = await gql(REGISTER, { input: { email: 'A@Example.com', password: 'Apassword' } });
-    const second = await gql(REGISTER, { input: { email: 'a@example.com', password: 'apassword' } });
-    expect(first.body.errors).toBeUndefined();
-    expect(second.body.errors).toBeUndefined();
-    expect(await prisma.user.count()).toEqual(2);
-  });
-  it.failing('[known bug] : the same email in another letter case is refused', async () => {
+ 
+  it(' the same email in another letter case is refused', async () => {
     await gql(REGISTER, { input: { email: 'A@Example.com', password: 'Apassword' } });
     const second = await gql(REGISTER, { input: { email: 'a@example.com', password: 'apassword' } });
     expect(second.body.errors).toBeDefined();
     expect(await prisma.user.count()).toEqual(1);
   });
+ 
 
   it('the registration response has no password or hash anywhere', async () => {
     const response = await gql(REGISTER, { input: { email: 'check@Example.com', password: 'password' } });
@@ -174,4 +169,31 @@ describe('registration', () => {
     expect(await bcrypt.compare(Zpassword, user.password)).toEqual(false);
 
   });
+
+  it('stores the email trimmed and in lowercase', async () => {
+  const res = await gql(REGISTER, {
+    input: { email: '  Mixed.Case@Example.COM  ', password: 'password-for-tests' },
+  });
+  expect(res.body.errors).toBeUndefined();
+  const users = await prisma.user.findMany();
+  expect(users.map((u) => u.email)).toEqual(['mixed.case@example.com']);
+});
+
+it.each([
+  ['upper case', 'DUP@EXAMPLE.COM'],
+  ['mixed case', 'Dup@Example.com'],
+  ['surrounding spaces', '  dup@example.com  '],
+])('a duplicate differing only by %s is refused', async (_label, second) => {
+  const first = await gql(REGISTER, {
+    input: { email: 'dup@example.com', password: 'first-password' },
+  });
+  expect(first.body.errors).toBeUndefined();
+  const before = await prisma.user.findUniqueOrThrow({ where: { email: 'dup@example.com' } });
+
+  const res = await gql(REGISTER, { input: { email: second, password: 'second-password' } });
+  expect(res.body.errors?.[0]?.message).toBe('Email already in use');
+  expect(await prisma.user.count()).toBe(1);
+  const after = await prisma.user.findUniqueOrThrow({ where: { email: 'dup@example.com' } });
+  expect(after.password).toEqual(before.password);
+});
 });

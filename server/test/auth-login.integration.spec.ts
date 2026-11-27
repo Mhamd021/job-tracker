@@ -89,4 +89,21 @@ it('login with an unknown email still runs one bcrypt comparison', async () => {
     spy.mockRestore();
   }
 });
+it.each([
+  ['upper case', 'LOGIN-CASE@EXAMPLE.COM'],
+  ['surrounding spaces', '  login-case@example.com  '],
+])('login works when the email differs by %s', async (_label, typed) => {
+  await gql(REGISTER, { input: { email: 'login-case@example.com', password: 'password' } });
+  const res = await gql(LOGIN, { input: { email: typed, password: 'password' } });
+  expect(res.body.errors).toBeUndefined();
+  const user = await prisma.user.findUniqueOrThrow({ where: { email: 'login-case@example.com' } });
+  expect(verifier.verify(res.body.data.login.access_token).sub).toEqual(user.id);
+});
+
+it('registered with capitals, logs in with lowercase', async () => {
+  await gql(REGISTER, { input: { email: 'CaPs@Example.com', password: 'password' } });
+  const res = await gql(LOGIN, { input: { email: 'caps@example.com', password: 'password' } });
+  expect(res.body.errors).toBeUndefined();
+  expect(res.body.data.login.access_token).toEqual(expect.any(String));
+});
 });
