@@ -3,6 +3,8 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { resetTestDatabase } from './reset-test-database';
 import { createTestApp, makeGql } from './helpers/test-app';
+import * as bcrypt from 'bcrypt';
+
 
 
 const REGISTER = `mutation ($input: AuthInput!) { register(input: $input) { access_token } }`;
@@ -74,7 +76,17 @@ describe('login', () => {
     unknown.push(await time(`nobody-${i}@gmail.com`));
   }
   const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
-  console.log(`median wrong password: ${median(wrong).toFixed(1)} ms, unknown email: ${median(unknown).toFixed(1)} ms`);
   expect(wrong.length).toBe(runs);
+});
+
+
+it('login with an unknown email still runs one bcrypt comparison', async () => {
+  const spy = jest.spyOn(bcrypt, 'compare');
+  try {
+    await gql(LOGIN, { input: { email: 'nobody@example.com', password: 'password' } });
+    expect(spy).toHaveBeenCalledTimes(1);
+  } finally {
+    spy.mockRestore();
+  }
 });
 });
