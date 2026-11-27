@@ -1,0 +1,267 @@
+import { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import * as request from 'supertest';
+import { AppModule } from '../src/app.module';
+import { PrismaService } from '../src/prisma/prisma.service';
+import { assertTestDatabase } from './assert-test-database';
+import { resetTestDatabase } from './reset-test-database';
+import { CreateApplicationInput } from '../src/applications/dto/create-application.input';
+import {  Status } from '../src/applications/models/application.model';
+import { UpdateApplicationInput } from '../src/applications/dto/update-application.input';
+
+
+describe('ownership', () => {
+  let app: INestApplication;
+  let prisma: PrismaService;
+
+  const gql = (query: string, variables: object = {}, token?: string) => {
+    const req = request(app.getHttpServer()).post('/graphql');
+    if (token) req.set('Authorization', `Bearer ${token}`);
+    return req.send({ query, variables });
+  };
+  const REGISTER = `
+  mutation ($input: AuthInput!) {
+    register(input: $input) { access_token }
+  }
+`;
+  const register = async (email: string): Promise<string> => {
+  const response = await gql(REGISTER, {
+    input: { email, password: 'password-for-tests' },
+  });
+  const token = response.body?.data?.register?.access_token;
+  if (!token) {
+    throw new Error(
+      `register failed: ${JSON.stringify(response.body.errors ?? response.body)}`,
+    );
+  }
+  return token;
+};
+
+const APPLICATION = `mutation ($input: CreateApplicationInput!) {
+  createApplication(input: $input) {id}
+}`;
+const createApplication = async (input: CreateApplicationInput, token:string): Promise<string> => {
+  const response = await gql(APPLICATION, {
+    input
+  },token);
+  const id = response.body?.data?.createApplication?.id;
+  if (!id) {
+    throw new Error(
+      `create application failed: ${JSON.stringify(response.body.errors ?? response.body)}`,
+    );
+  }
+  return id;
+};
+const UPDATE_APPLICATION = `mutation ($input: UpdateApplicationInput!) {
+  updateApplication(input: $input) { id companyName }
+}`;
+
+const updateApplication = async (input: UpdateApplicationInput, token:string) => 
+  {
+    const response = await gql(UPDATE_APPLICATION, { input }, token);
+    return response;
+  }
+  const DELETE_APPLICATION = `mutation ($id: ID!) {
+  deleteApplication(id: $id) { id }
+}`;
+const deleteApplication = async(id:string,token:string) =>
+{
+const response = await gql(DELETE_APPLICATION,{id:id},token );
+return response;
+}
+
+const READAPPLICATION = `query ($id:ID!)
+{
+    application(id :$id) {id,userId}
+}`;
+const readApplication = async(id:string,token:string) => 
+  {
+    const response = await gql(READAPPLICATION,{id:id},token );
+
+    return response;
+     
+  }
+
+  
+const READAPPLICATIONS = `query { applications { id userId } }`;
+
+const readApplications = async(token:string) =>
+  {
+    const response = await gql(READAPPLICATIONS,{},token );
+    return response;
+  }
+
+  const READ_STATS = `query { stats { total byStatus { status count } } }`;
+  const readStats = (token: string) => gql(READ_STATS, {}, token);
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    app = moduleRef.createNestApplication();
+    await app.init();
+    prisma = app.get(PrismaService);
+    await assertTestDatabase(prisma);
+  });
+
+  beforeEach(async () => {
+    await resetTestDatabase(prisma);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+it('user A cannot read user B application by id', async () => {
+  const userAtoken = await register(`${Date.now()}-a@example.com`);
+  const userBtoken = await register(`${Date.now()}-b@example.com`);
+
+  const applicationId = await createApplication(
+    { companyName: 'userA Company', jobRole: 'userA Role' },
+    userAtoken,
+  );
+
+  const asOwner = await readApplication(applicationId, userAtoken);
+  expect(asOwner.body.errors).toBeUndefined();
+  expect(asOwner.body.data.application.id).toBe(applicationId);
+
+  const asOther = await readApplication(applicationId, userBtoken);
+  expect(asOther.body.errors).toBeUndefined();
+  expect(asOther.body.data.application).toBeNull();
+});
+
+    it('user read applications wihtout leak', async () => {
+  const userAtoken = await register(`${Date.now()}-a@example.com`);
+  const userBtoken = await register(`${Date.now()}-b@example.com`);
+
+  const applicationIdA1 = await createApplication(
+    { companyName: 'userA Company', jobRole: 'userA Role' },
+    userAtoken,
+  );
+  const applicationIdA2 = await createApplication(
+    { companyName: 'userA Company2', jobRole: 'userA Role2' },
+    userAtoken,
+  );
+   const applicationIdB1 = await createApplication(
+    { companyName: 'userB Company', jobRole: 'userB Role' },
+    userBtoken,
+  );
+
+  
+  const asOwnerA = await readApplications(userAtoken);
+  const ids = (res: { body: any }): string[] =>
+  res.body.data.applications.map((a: { id: string }) => a.id).sort();
+  
+  expect(asOwnerA.body.errors).toBeUndefined();
+  expect(asOwnerA.body.data.applications).toHaveLength(2);
+  
+
+expect(ids(asOwnerA)).toEqual([applicationIdA1, applicationIdA2].sort());
+
+  const asOwnerB = await readApplications(userBtoken);
+  expect(asOwnerB.body.errors).toBeUndefined();
+  expect(asOwnerB.body.data.applications).toHaveLength(1);
+  expect(ids(asOwnerB)).toEqual([applicationIdB1].sort());
+});
+
+it('stats counts only the users own applications', async () => {
+ const usertoken = await register(`${Date.now()}-a@example.com`);
+  const userBtoken = await register(`${Date.now()}-b@example.com`);
+
+ await createApplication(
+    { companyName: 'userB Company', jobRole: 'userB Role',status:Status.REJECTED },
+    userBtoken,
+  );
+   await createApplication(
+    { companyName: 'userA Company', jobRole: 'userA Role' },
+    usertoken,
+  );
+    await createApplication(
+    { companyName: 'userA Company2', jobRole: 'userA Role2' },
+    usertoken,
+  );
+   await createApplication(
+    { companyName: 'userA Company3', jobRole: 'userA Role3',status:Status.INTERVIEW },
+    usertoken,
+  );
+
+  const counts = (res: { body: any }): Record<string, number> =>
+  Object.fromEntries(
+    res.body.data.stats.byStatus.map(
+      (s: { status: string; count: number }) => [s.status, s.count],
+    ),
+  );
+ 
+  const statsA = await readStats(usertoken);
+  expect(statsA.body.errors).toBeUndefined();
+  expect(statsA.body.data.stats.total).toBe(3);
+  expect(counts(statsA)).toEqual({ APPLIED: 2, INTERVIEW: 1 });
+
+  const statsB = await readStats(userBtoken);
+  expect(statsB.body.errors).toBeUndefined();
+  expect(statsB.body.data.stats.total).toBe(1);
+  expect(counts(statsB)).toEqual({ REJECTED: 1});
+
+});
+it('user A cannot update user B application', async () => {
+  const userAtoken = await register(`${Date.now()}-a@example.com`);
+  const userBtoken = await register(`${Date.now()}-b@example.com`);
+
+   const applicationIdA1 = await createApplication(
+    { companyName: 'userA Company', jobRole: 'userA Role', },
+    userAtoken,
+  );
+  const update = await updateApplication({id:applicationIdA1,companyName:"changed by owner"},userAtoken);
+  expect(update.body.errors).toBeUndefined();
+  expect(update.body.data.updateApplication.companyName).toBe("changed by owner");
+
+
+  const bupdate = await updateApplication({id:applicationIdA1,companyName:"changed by B"},userBtoken);
+  const companyName = await prisma.application.findUnique({where:{id:applicationIdA1}});
+  expect(companyName?.companyName).toEqual('changed by owner');
+  expect(bupdate.body.errors).not.toBeUndefined();
+  expect(bupdate.body.data).toBeNull();
+});
+
+it('user B cannot delete user A application' , async() =>
+{
+  const userAtoken = await register(`${Date.now()}-a@example.com`);
+  const userBtoken = await register(`${Date.now()}-b@example.com`);
+
+   const applicationIdA1 = await createApplication(
+    { companyName: 'userA Company', jobRole: 'userA Role', },
+    userAtoken,
+  );
+  const deleteB = await deleteApplication(applicationIdA1,userBtoken);
+  expect(deleteB.body.errors).not.toBeUndefined();
+  const stillThere = await prisma.application.findUnique({
+  where: { id: applicationIdA1 },
+});
+  expect(stillThere).not.toBeNull();
+  
+  const deleteA= await deleteApplication(applicationIdA1,userAtoken);
+  expect(deleteA.body.errors).toBeUndefined();
+  expect(deleteA.body.data.deleteApplication.id).toEqual(applicationIdA1);
+  const gone = await prisma.application.findUnique({
+  where: { id: applicationIdA1 },
+  });
+  expect(gone).toBeNull();
+});
+it('userId cannot be set through the input' , async() => {
+  const userAtoken = await register(`a@example.com`);
+   await register(`b@example.com`);
+  const userb = await prisma.user.findUnique({ where: { email: 'b@example.com' } });
+  const usera = await prisma.user.findUnique({ where: { email: 'a@example.com' } });
+
+  const application = await createApplication(
+    { companyName: 'userA Company', jobRole: 'userA Role' }, // add this and add to createApplicationInput a userId field, userId: userb?.id
+    userAtoken
+  );
+
+  const appInDb = await prisma.application.findUnique({where:{id:application}});
+
+  expect(appInDb?.userId).not.toEqual(userb?.id);
+  expect(appInDb?.userId).toEqual(usera?.id);
+});
+ 
+  });
+  
