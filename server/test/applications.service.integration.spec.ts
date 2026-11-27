@@ -3,12 +3,6 @@ import { ApplicationsService } from '../src/applications/applications.service';
 import { assertTestDatabase } from './assert-test-database';
 import { resetTestDatabase } from './reset-test-database';
 
-
-
-
-
-
-
 const uid = (v: unknown) => v as string;
 
 const calls: [string, (s: ApplicationsService, bad: unknown, id: string) => Promise<unknown>][] = [

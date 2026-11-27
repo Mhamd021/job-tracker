@@ -229,3 +229,4 @@ it('a token without a sub cannot read other users data', async () => {
   expect(JSON.stringify(res.body)).not.toContain('Secret');
 });
 });
+
