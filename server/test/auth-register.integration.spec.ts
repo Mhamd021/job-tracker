@@ -87,7 +87,7 @@ describe('registration', () => {
     expect(verifier.verify(tokenOf(responses[winnerIndex])!).sub).toEqual(user.id);
   });
 
-  it.failing(' [known bug]:the loser of a simultaneous registration gets "Email already in use"', async () => {
+  it(' the loser of a simultaneous registration gets "Email already in use"', async () => {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const email = `race-${attempt}@example.com`;
       const responses = await Promise.all(
@@ -97,7 +97,7 @@ describe('registration', () => {
       );
       const losers = responses.filter((r) => !r.body?.data?.register?.access_token);
 
-      expect(losers.length).not.toBe(1);
+      expect(losers.length).toBe(1);
       expect(losers[0].body?.errors?.[0]?.message).toBe('Email already in use');
     }
   });
@@ -147,6 +147,7 @@ describe('registration', () => {
 
      const false_email = await gql(REGISTER, { input: { email: 'not an email', password: 'password' } });
     expect(false_email.body.errors).toBeDefined();
+    expect(res.body.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT');
     expect(await prisma.user.count({ where: { email: 'not an email' } })).toEqual(0);
    });
 
@@ -154,6 +155,7 @@ describe('registration', () => {
     
     const empty_password = await gql(REGISTER, { input: { email: 'email@gmail.com', password: '' } });
     expect(empty_password.body.errors).toBeDefined();
+    expect(res.body.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT');
     expect(await prisma.user.count({ where: { email: 'email@gmail.com' } })).toEqual(0);
    });
   
